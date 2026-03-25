@@ -13,85 +13,85 @@ type TodoistWebhookEvent = {
   version?: string;
 };
 
-const todoistWebhookRoutes = new Hono();
+function registerTodoistWebhookRoutes(app: Hono): void {
+  app.post("/webhooks/todoist", async (c) => {
+    const signature = c.req.header(TODOIST_SIGNATURE_HEADER);
+    const deliveryId = c.req.header(TODOIST_DELIVERY_ID_HEADER) ?? "unknown";
+    const userAgent = c.req.header(TODOIST_USER_AGENT_HEADER) ?? "unknown";
+    const body = await c.req.raw.text();
+    const bodyBytes = new TextEncoder().encode(body).byteLength;
 
-todoistWebhookRoutes.post("/todoist", async (c) => {
-  const signature = c.req.header(TODOIST_SIGNATURE_HEADER);
-  const deliveryId = c.req.header(TODOIST_DELIVERY_ID_HEADER) ?? "unknown";
-  const userAgent = c.req.header(TODOIST_USER_AGENT_HEADER) ?? "unknown";
-  const body = await c.req.raw.text();
-  const bodyBytes = new TextEncoder().encode(body).byteLength;
+    if (!signature) {
+      console.warn("Todoist webhook missing signature", {
+        source: "todoist-webhook",
+        route: "/webhooks/todoist",
+        deliveryId,
+        userAgent,
+        bodyBytes,
+      });
 
-  if (!signature) {
-    console.warn("Todoist webhook missing signature", {
-      source: "todoist-webhook",
-      route: "/webhooks/todoist",
-      deliveryId,
-      userAgent,
-      bodyBytes,
-    });
+      return c.json({ error: "Missing webhook signature." }, 401);
+    }
 
-    return c.json({ error: "Missing webhook signature." }, 401);
-  }
+    const clientSecret = Deno.env.get(TODOIST_CLIENT_SECRET_ENV);
 
-  const clientSecret = Deno.env.get(TODOIST_CLIENT_SECRET_ENV);
+    if (!clientSecret) {
+      console.error("Todoist webhook secret is not configured", {
+        source: "todoist-webhook",
+        route: "/webhooks/todoist",
+        deliveryId,
+      });
 
-  if (!clientSecret) {
-    console.error("Todoist webhook secret is not configured", {
-      source: "todoist-webhook",
-      route: "/webhooks/todoist",
-      deliveryId,
-    });
+      return c.json({ error: "Webhook secret is not configured." }, 500);
+    }
 
-    return c.json({ error: "Webhook secret is not configured." }, 500);
-  }
+    const expectedSignature = await signPayload(body, clientSecret);
 
-  const expectedSignature = await signPayload(body, clientSecret);
+    if (!timingSafeEqual(signature, expectedSignature)) {
+      console.warn("Todoist webhook signature mismatch", {
+        source: "todoist-webhook",
+        route: "/webhooks/todoist",
+        deliveryId,
+        userAgent,
+        bodyBytes,
+        signatureValid: false,
+      });
 
-  if (!timingSafeEqual(signature, expectedSignature)) {
-    console.warn("Todoist webhook signature mismatch", {
-      source: "todoist-webhook",
-      route: "/webhooks/todoist",
-      deliveryId,
-      userAgent,
-      bodyBytes,
-      signatureValid: false,
-    });
+      return c.json({ error: "Invalid webhook signature." }, 401);
+    }
 
-    return c.json({ error: "Invalid webhook signature." }, 401);
-  }
+    let payload: TodoistWebhookEvent;
 
-  let payload: TodoistWebhookEvent;
+    try {
+      payload = JSON.parse(body) as TodoistWebhookEvent;
+    } catch (_error) {
+      console.warn("Todoist webhook payload is not valid JSON", {
+        source: "todoist-webhook",
+        route: "/webhooks/todoist",
+        deliveryId,
+        userAgent,
+        bodyBytes,
+        signatureValid: true,
+      });
 
-  try {
-    payload = JSON.parse(body) as TodoistWebhookEvent;
-  } catch (_error) {
-    console.warn("Todoist webhook payload is not valid JSON", {
+      return c.json({ error: "Invalid JSON payload." }, 400);
+    }
+
+    console.info("Todoist webhook received", {
       source: "todoist-webhook",
       route: "/webhooks/todoist",
       deliveryId,
       userAgent,
       bodyBytes,
       signatureValid: true,
+      eventName: payload.event_name ?? "unknown",
+      eventVersion: payload.version ?? "unknown",
+      resourceId: payload.event_data?.id ?? "unknown",
     });
 
-    return c.json({ error: "Invalid JSON payload." }, 400);
-  }
-
-  console.info("Todoist webhook received", {
-    source: "todoist-webhook",
-    route: "/webhooks/todoist",
-    deliveryId,
-    userAgent,
-    bodyBytes,
-    signatureValid: true,
-    eventName: payload.event_name ?? "unknown",
-    eventVersion: payload.version ?? "unknown",
-    resourceId: payload.event_data?.id ?? "unknown",
+    return c.json({ received: true }, 200);
   });
-
-  return c.json({ received: true }, 200);
-});
+}
 
 async function signPayload(payload: string, secret: string): Promise<string> {
   const secretBytes = new TextEncoder().encode(secret);
@@ -129,4 +129,4 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-export { signPayload, todoistWebhookRoutes };
+export { registerTodoistWebhookRoutes, signPayload };

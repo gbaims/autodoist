@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
-import { routes } from "./routes/index.ts";
+import { registerHealthRoutes } from "./routes/health.ts";
+import { registerTodoistWebhookRoutes } from "./routes/webhooks/todoist.ts";
 
 const app = new Hono();
 
@@ -8,6 +9,7 @@ app.get("/", (c) => {
   return c.text("Autodoist is running.");
 });
 
-app.route("/", routes);
+registerHealthRoutes(app);
+registerTodoistWebhookRoutes(app);
 
 export { app };
