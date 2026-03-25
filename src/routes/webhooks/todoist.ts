@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 
+import type { AppConfig } from "../../config.ts";
+
 const TODOIST_SIGNATURE_HEADER = "X-Todoist-Hmac-SHA256";
 const TODOIST_DELIVERY_ID_HEADER = "X-Todoist-Delivery-ID";
 const TODOIST_USER_AGENT_HEADER = "User-Agent";
-const TODOIST_CLIENT_SECRET_ENV = "TODOIST_CLIENT_SECRET";
-
 type TodoistWebhookEvent = {
   event_name?: string;
   event_data?: {
@@ -13,7 +13,7 @@ type TodoistWebhookEvent = {
   version?: string;
 };
 
-function registerTodoistWebhookRoutes(app: Hono): void {
+function registerTodoistWebhookRoutes(app: Hono, config: AppConfig): void {
   app.post("/webhooks/todoist", async (c) => {
     const signature = c.req.header(TODOIST_SIGNATURE_HEADER);
     const deliveryId = c.req.header(TODOIST_DELIVERY_ID_HEADER) ?? "unknown";
@@ -33,19 +33,10 @@ function registerTodoistWebhookRoutes(app: Hono): void {
       return c.json({ error: "Missing webhook signature." }, 401);
     }
 
-    const clientSecret = Deno.env.get(TODOIST_CLIENT_SECRET_ENV);
-
-    if (!clientSecret) {
-      console.error("Todoist webhook secret is not configured", {
-        source: "todoist-webhook",
-        route: "/webhooks/todoist",
-        deliveryId,
-      });
-
-      return c.json({ error: "Webhook secret is not configured." }, 500);
-    }
-
-    const expectedSignature = await signPayload(body, clientSecret);
+    const expectedSignature = await signPayload(
+      body,
+      config.todoist.clientSecret,
+    );
 
     if (!timingSafeEqual(signature, expectedSignature)) {
       console.warn("Todoist webhook signature mismatch", {

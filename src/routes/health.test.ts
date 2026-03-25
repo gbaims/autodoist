@@ -1,6 +1,12 @@
 import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
 
-import { app } from "../app.ts";
+import { createApp } from "../app.ts";
+
+const app = createApp({
+  todoist: {
+    clientSecret: "test-secret",
+  },
+});
 
 Deno.test("GET /health returns service health data", async () => {
   const response = await app.request("/health");

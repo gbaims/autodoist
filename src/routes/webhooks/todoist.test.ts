@@ -1,24 +1,14 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-import { app } from "../../app.ts";
+import { createApp } from "../../app.ts";
 import { signPayload } from "./todoist.ts";
 
-const TODOIST_CLIENT_SECRET_ENV = "TODOIST_CLIENT_SECRET";
 const TODOIST_CLIENT_SECRET = "test-secret";
 
-const originalClientSecret = Deno.env.get(TODOIST_CLIENT_SECRET_ENV);
-
-Deno.test.beforeEach(() => {
-  Deno.env.set(TODOIST_CLIENT_SECRET_ENV, TODOIST_CLIENT_SECRET);
-});
-
-Deno.test.afterAll(() => {
-  if (originalClientSecret === undefined) {
-    Deno.env.delete(TODOIST_CLIENT_SECRET_ENV);
-    return;
-  }
-
-  Deno.env.set(TODOIST_CLIENT_SECRET_ENV, originalClientSecret);
+const app = createApp({
+  todoist: {
+    clientSecret: TODOIST_CLIENT_SECRET,
+  },
 });
 
 Deno.test("POST /webhooks/todoist accepts a valid signed webhook", async () => {
